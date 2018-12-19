@@ -1,0 +1,186 @@
+---
+title: "FER Exploratory Data Analysis"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Introduction
+
+This is an R Markdown document contains the exploratory data analysis of the Facial Emotion Recognition dataset.
+
+## Setting the working directory of the project
+
+```{r setwd}
+setwd("C:/Users/Nishna/Documents/F21DL_CW3")
+```
+
+## Visualize the distribution of classes in the original dataset
+```{r main_dataset, echo=FALSE}
+
+#load the dataset
+fer_train <- readRDS(file = "C:/Users/Nishna/Documents/F21DL_CW3/Datasets/RDS/fer_train_splitted.Rds")
+fer_test <- readRDS(file = "C:/Users/Nishna/Documents/F21DL_CW3/Datasets/RDS/fer_test_splitted.Rds")
+
+
+#get the list of number of classes
+classes_no_train <- data.frame("No_of_classes" = table(fer_train$emotion),
+                                "Dataset" = "train")
+classes_no_test <- data.frame("No_of_classes" = table(fer_test$emotion),
+                                "Dataset" = "test")
+library(dplyr)
+classes_no <- bind_rows(classes_no_train,classes_no_test)
+classes_no <- mutate(classes_no, 
+                     Dataset = factor(classes_no$Dataset),
+                     Classes = No_of_classes.Var1,
+                     Frequency = No_of_classes.Freq) %>% 
+  select(Dataset,Classes,Frequency)
+  
+
+#plot as hist
+library(ggplot2)
+p_orig <- classes_no %>% 
+  ggplot(aes(Classes, Frequency, fill = Dataset)) +
+  geom_bar(stat="identity",position='dodge') +
+  xlab("Emotions") +
+  ylab("No of Instances") +
+  ggtitle("Distribution of classes - original dataset") +
+  theme(plot.title = element_text(lineheight=.8, face="bold"))
+p_orig
+```
+The distribution is not even and the value ranges from 436 to 7215 in the training set and 111 to 1774 in test set
+
+
+
+## Visualizing the distribution of values in each pixel
+```{r, echo=FALSE}
+library(matrixStats)
+library(ggplot2)
+x <- as.matrix(x[,2:2305])
+sds1 <- colSds(x)
+grid <- matrix(sds1, 48, 48,byrow = TRUE)
+image(1:48, 1:48, grid,col= topo.colors(12)) 
+
+load(file = "C:/Users/Nishna/Documents/F21DL_CW3/Datasets/RDA/fer_train_rotated.rda")
+sds2 <- colSds(fer_train_rotated)
+grid <- matrix(sds2, 48, 48,byrow = TRUE)
+image(1:48, 1:48, grid,col= topo.colors(12))
+
+load(file = "C:/Users/Nishna/Documents/F21DL_CW3/Datasets/RDA/fer_train_cropped.rda")
+sds3 <- colSds(fer_train_cropped)
+grid <- matrix(sds3, 39, 48,byrow = TRUE)
+image(1:39, 1:48, grid,col= topo.colors(12))
+
+
+```
+## Visualizing the distribution of pixels in rotated images
+
+```{r, echo=FALSE}
+library(matrixStats)
+qplot(sds1, bins = "30", color = I("black"))
+qplot(sds2, bins = "30", color = I("blue"))
+qplot(sds3, bins = "30", color = I("blue"))
+
+sds4 <- colSds(fer_train_centered)
+qplot(sds4, bins = "30", color = I("blue"))
+sds5 <- colSds(fer_train_scaled)
+qplot(sds5, bins = "30", color = I("blue"))
+
+save(sds1,sds2,sds3,sds4,sds5, file = "fer_sds.rda")
+```
+
+
+## Visualizing transformations - Sample image
+(i) original
+(ii)rotation 
+(iii)cropped
+```{r, echo=FALSE}
+# fer_train[2,]
+grid <- matrix(as.matrix(fer_train[15,2:2305]), 48, 48,byrow = TRUE) 
+image(1:48, 1:48, grid)
+
+# fer_train_rotated[2,]
+grid <- matrix(fer_train_rotated[15,], 48, 48,byrow = TRUE) 
+image(1:48, 1:48, grid)
+
+# fer_train_cropped[2,]
+grid <- matrix(fer_train_cropped[15,], 39, 48,byrow = TRUE) 
+image(1:39, 1:48, grid)
+
+# fer_train_cropped_plus_labels[2,]
+grid <- matrix(fer_train_cropped_plus_labels[1,2:1873], 39, 48,byrow = TRUE) 
+image(1:39, 1:48, grid)
+```
+
+## PCA -train data
+```{r}
+load("pca_train_original.rda")
+
+plot(pca_train$sdev)
+library(dplyr)
+summary(pca_train)$importance[,c(2,5,10,15,20,25,50)] %>% knitr::kable()
+```
+
+## tSNE - orig-train
+```{r, echo=FALSE}
+#PCA 
+load(file = "C:/Users/Nishna/Documents/F21DL_CW3/Datasets/RDA/pca_train_original.rda")
+load("C:/Users/Nishna/Documents/F21DL_CW3/Datasets/RDA/orig_train.rda")
+pca_train_original_x <- pca_train_original$x[,1:50]
+library(Rtsne)
+options(error = recover)
+tsne_adasyn_theta_3 <- Rtsne(pca_train_original_x, 
+              dims = 2, 
+              theta = 0.3,  perplexity=45, 
+              check_duplicates = FALSE,
+              pca_center = FALSE,
+          #    partial_pca = TRUE,
+              verbose=TRUE, 
+              max_iter = 5000)
+tsne_adasyn_theta_3_plot <- data.frame(x = tsne_adasyn_theta_3$Y[,1], y = tsne_adasyn_theta_3$Y[,2], emotion = orig_train[,1])
+library(ggplot2)
+library(dplyr)
+
+p_theta_3 <- tsne_adasyn_theta_3_plot %>% ggplot(aes(x=x, y=y, color = emotion)) + geom_point() +  
+  ggtitle("PCA_Theta 0.3 Iteration 5000") +
+  theme(plot.title = element_text(lineheight=.8, face="bold"))
+p_theta_3
+save(tsne_adasyn_theta_3,tsne_adasyn_theta_3_plot,p_adasyn_theta_3, file =
+       "C:/Users/Nishna/Documents/F21DL_CW3/Datasets/RDA/adasyn_pca_theta.rda")
+```
+
+
+
+## tSNE - balanced train
+```{r, echo=FALSE}
+# 
+balanced <- readRDS(file = "C:/Users/Nishna/Documents/F21DL_CW3/Datasets/RDS/orig_train_balanced.Rds")
+```
+```{r}
+library(Rtsne)
+options(error = recover)
+tsne_balanced_theta_3 <- Rtsne(balanced, 
+              dims = 2, 
+              theta = 0.3,  perplexity=45, 
+              check_duplicates = FALSE,
+              pca_center = FALSE,
+          #    partial_pca = TRUE,
+              verbose=TRUE, 
+              max_iter = 5000)
+tsne_balanced_theta_3_plot <- data.frame(x = tsne_balanced_theta_3$Y[,1], y = tsne_balanced_theta_3$Y[,2], emotion = balanced[,51])
+
+```
+```{r, echo=FALSE}
+library(ggplot2)
+library(dplyr)
+
+p_balanced_theta_3 <- tsne_balanced_theta_3_plot %>% ggplot(aes(x=x, y=y, color = emotion)) + geom_point() +  
+  ggtitle("Balanced_Classes_Theta 0.3 Iteration 5000") +
+  theme(plot.title = element_text(lineheight=.8, face="bold"))
+p_balanced_theta_3
+save(tsne_balanced_theta_3,tsne_balanced_theta_3_plot,p_balanced_theta_3, file =
+       "C:/Users/Nishna/Documents/F21DL_CW3/Datasets/RDA/balanced_theta.rda")
+```

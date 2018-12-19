@@ -1,0 +1,120 @@
+---
+title: "Classifiers"
+output: word_document
+---
+using caret package
+```{r}
+library(caret)
+load(file = "tsne_full_45_5000.rda")
+levels(emotion) <- c("Angry", "Disgust", "Fear","Happy", "Sad", "Surprise", "Neutral")
+tsne_full_45_plot_5000 <- data.frame(V1 = tsne_full_45_5000$Y[,1], V2 = tsne_full_45_5000$Y[,2], emotion = emotion)
+
+control <- trainControl(method = "repeatedcv",
+                           number = 10,
+                        repeats = 10,
+                        verboseIter = TRUE)
+set.seed(123)
+dtree_1b <- train(emotion ~., data = tsne_full_45_plot_5000,
+                  method = "rpart",
+                   parms = list(split = "information"),
+                   trControl = control
+                  )
+
+save(dtree_1b, file = "C:/Users/Nishna/Documents/F21DL_CW3/Classifiers/DTdtree1b.rda")
+#max(dtree_1b$results$Accuracy)
+
+dtree_1b$results
+
+```
+```{r}
+#tree
+load(file = "C:/Users/Nishna/Documents/F21DL_CW3/Classifiers/DTdtree1b.rda")
+#Prediction - tsne_original_test
+load(file = "C:/Users/Nishna/Documents/F21DL_CW3/Datasets/RDA/tsne_test_original.rda")
+y_hat <- predict(dtree_2, tsne_test_original, type = "raw")
+
+#Results
+load("C:/Users/Nishna/Documents/F21DL_CW3/Datasets/RDA/test_original.rda")
+confusionMatrix(y_hat, factor(test_original[,1]))
+```
+
+
+## classifier 2 : Original_dataset_balanced_classes (benchmark classifier II)
+```{r}
+library(caret)
+dat <- readRDS(file = "C:/Users/Nishna/Documents/F21DL_CW3/Datasets/RDS/orig_train_balanced.Rds")
+levels(dat$class) <- c("Angry", "Disgust", "Fear","Happy", "Sad", "Surprise", "Neutral")
+
+control <- trainControl(method = "repeatedcv",
+                           number = 10,
+                        repeats = 10,
+                        verboseIter = TRUE)
+set.seed(123)
+n <- ncol(dat)
+dtree_2 <- train(class ~., data = dat[,c(1:25,n)],
+                  method = "rpart",
+                   parms = list(split = "information"),
+                   trControl = control
+                  )
+
+save(dtree_2, file = "C:/Users/Nishna/Documents/F21DL_CW3/Classifiers/DTdtree_2.rda")
+#max(dtree_1b$results$Accuracy)
+
+dtree_2$results
+#Prediction
+load(file = "C:/Users/Nishna/Documents/F21DL_CW3/Datasets/RDA/pca_validation_original.rda")
+y_hat <- predict(dtree_2, pca_validation, type = "raw")
+
+#Results
+load("C:/Users/Nishna/Documents/F21DL_CW3/Datasets/RDA/orig_validation.rda")
+confusionMatrix(y_hat, factor(orig_validation[,1]))
+```
+
+From the table , we get a max accuracy of 65.5% for cp = 0.16399
+
+From this we get the model which has the most important features
+
+              TUNING
+              
+1. cp - complexity parameter              
+## Hyperparameter tuning - cp
+```{r}
+library(rpart)
+n <- ncol(dat)
+dtree_3 <- rpart(class ~., data = dat[,c(1:25,n)],
+                 method = "class",
+                 parms = list(split = "information")
+                     )
+
+printcp(dtree_3)
+plotcp(dtree_3)
+#Prediction
+load(file = "C:/Users/Nishna/Documents/F21DL_CW3/Datasets/RDA/pca_validation_original.rda")
+y_hat <- predict(dtree_3, as.data.frame(pca_validation), type = "class")
+
+#Results
+load("C:/Users/Nishna/Documents/F21DL_CW3/Datasets/RDA/orig_validation.rda")
+confusionMatrix(y_hat, factor(orig_validation[,1]))
+```
+
+## Hyperparameter tuning - Pruning
+```{r}
+library(rattle)
+library(RColorBrewer)
+library(rpart.plot)
+fancyRpartPlot(dtree_3)
+prun_tree_orig<- prune(dtree_3, 
+                  cp = dtree_3$cptable[which.min(dtree_3$cptable[,"xerror"]),"CP"])
+fancyRpartPlot(prun_tree_orig, uniform=TRUE, 
+               main="Pruned Classification Tree")
+
+#Prediction
+load(file = "C:/Users/Nishna/Documents/F21DL_CW3/Datasets/RDA/pca_test_original.rda")
+y_hat <- predict(prun_tree_orig, as.data.frame(pca_test), type = "class")
+save(prun_tree_orig, file = "C:/Users/Nishna/Documents/F21DL_CW3/Classifiers/prun_tree_orig.rda")
+#Results
+load("C:/Users/Nishna/Documents/F21DL_CW3/Datasets/RDA/orig_test.rda")
+print('                CONFUSION MATRIX-FINAL MODEL-ORIGINAL TEST')
+confusionMatrix(y_hat, factor(orig_test[,1]))
+```
+

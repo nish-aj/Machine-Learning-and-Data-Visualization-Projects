@@ -1,0 +1,250 @@
+---
+title: "FER - DT Classifier - Data Preparation"
+output: html_notebook
+---
+
+## Labels 
+```{r}
+fer_train <- readRDS(file = "~/Documents/FER/Datasets/RDS/fer_train_splitted.Rds")
+emotions_train <- fer_train$emotion
+save(emotions_train, file = "~/Documents/FER/Datasets/RDA/emotions_train.rda")
+
+
+fer_test <- readRDS(file = "~/Documents/FER/Datasets/RDS/fer_test_splitted.Rds")
+emotions_test <- fer_test$emotion
+save(emotions_test, file = "~/Documents/FER/Datasets/RDA/emotions_test.rda")
+```
+
+## Rotating original train & test datsets
+```{r}
+fer_train <- readRDS(file = "~/Documents/FER/Datasets/RDS/fer_train_splitted.Rds")
+fer_test <- readRDS(file = "~/Documents/FER/Datasets/RDS/fer_test_splitted.Rds")
+
+
+#Rotating training data
+x <- as.matrix(fer_train[, 2:2305])
+library(EBImage)
+fer_train_rotated <- apply(x,MARGIN = 1,FUN = function(x_row){
+  grid <- matrix(x_row, 48, 48)
+  img_rotate <- rotate(grid,270,bg.col = "white")
+  as.vector(img_rotate)
+  } )
+fer_train_rotated <- rotate(fer_train_rotated ,270)
+save(fer_train_rotated, file = "~/Documents/FER/Datasets/RDA/fer_train_rotated.rda")
+rm(fer_train_rotated)
+gc()
+
+
+#Rotating testing data
+x <- as.matrix(fer_test[, 2:2305])
+library(EBImage)
+fer_test_rotated <- apply(x,MARGIN = 1,FUN = function(x_row){
+  grid <- matrix(x_row, 48, 48)
+  img_rotate <- rotate(grid,270,bg.col = "white")
+  as.vector(img_rotate)
+  } )
+fer_test_rotated <- rotate(fer_test_rotated ,270)
+save(fer_test_rotated, file = "~/Documents/FER/Datasets/RDA/fer_test_rotated.rda")
+rm(fer_test_rotated)
+gc()
+
+```
+
+## Cropping original train & test datasets
+```{r}
+load(file = "~/Documents/FER/Datasets/RDA/fer_train_rotated.rda")
+fer_train_cropped <- apply(fer_train_rotated, MARGIN = 1, FUN = function(x_row){
+  grid <- matrix(x_row, 48, 48,byrow = TRUE)
+  img_crop <- grid[5:43,1:48]
+  as.vector(transpose(img_crop))  
+  } )
+fer_train_cropped <- transpose(fer_train_cropped)
+load(file = "~/Documents/FER/Datasets/RDA/emotions_train.rda")
+fer_train_cropped_plus_labels <- cbind(emotions_train,fer_train_cropped)
+save(fer_train_cropped ,fer_train_cropped_plus_labels, file = "~/Documents/FER/Datasets/RDA/fer_train_cropped.rda")
+rm(fer_train_cropped)
+rm(fer_train_rotated)
+rm(fer_train_cropped_plus_labels)
+gc()
+
+
+load(file = "~/Documents/FER/Datasets/RDA/fer_test_rotated.rda")
+fer_test_cropped <- apply(fer_test_rotated, MARGIN = 1, FUN = function(x_row){
+  grid <- matrix(x_row, 48, 48,byrow = TRUE)
+  img_crop <- grid[5:43,1:48]
+  as.vector(transpose(img_crop))  
+  } )
+fer_test_cropped <- transpose(fer_test_cropped)
+load(file = "~/Documents/FER/Datasets/RDA/emotions_test.rda")
+fer_test_cropped_plus_labels <- cbind(emotions_test,fer_test_cropped)
+save(fer_test_cropped ,fer_test_cropped_plus_labels, file = "~/Documents/FER/Datasets/RDA/fer_test_cropped.rda")
+rm(fer_test_cropped)
+rm(fer_test_rotated)
+rm(fer_test_cropped_plus_labels)
+gc()
+
+```
+
+## Centering
+
+```{r}
+
+centering <- function(x) {
+    x_center = colMeans(x)
+    x - rep(x_center, rep.int(nrow(x), ncol(x)))
+}
+
+fer_train_centered <- centering(fer_train_cropped)
+fer_test_centered <- centering(fer_test_cropped)
+
+save(fer_train_centered, fer_test_centered, file = "~/Documents/FER/Datasets/RDA/fer_test_centered.rda")
+```
+
+## Scaling
+```{r}
+library(scales)
+
+#train
+fer_train_scaled <- fer_train_centered
+ncolumns <- ncol(fer_train_centered)
+i=0
+while( i < ncolumns)
+{
+      fer_train_scaled[,i] <- rescale(fer_train_centered[,i], to = c(0.8,1.2))
+      i <- i + 1
+      
+}
+fer_train_scaled_plus_labels <- cbind(emotions_train,fer_train_scaled)    
+
+#test
+fer_test_scaled <- fer_test_centered
+ncolumns_test <- ncol(fer_test_centered)
+i=0
+while( i < ncolumns_test)
+{
+      fer_test_scaled[,i] <- rescale(fer_test_centered[,i], to = c(0.8,1.2))
+      i <- i + 1
+      
+}
+fer_test_scaled_plus_labels <- cbind(emotions_test,fer_test_scaled)  
+save(fer_train_scaled, fer_test_scaled, file = "~/Documents/FER/Datasets/RDA/fer_scaled.rda")
+
+saveRDS(fer_train_scaled_plus_labels, file = "~/Documents/FER/Datasets/RDS/fer_train_processed.rds")
+saveRDS(fer_test_scaled_plus_labels, file = "~/Documents/FER/Datasets/RDS/fer_test_processed.rds")
+```
+
+
+## Creating train & validation data from transformed fer_2017(rotated, cropped, centered & scaled )
+```{r}
+fer_train_processed <- readRDS(file = "~/Documents/FER/Datasets/RDS/fer_train_processed.rds")
+
+
+library(caret)
+set.seed(2)
+validation_index <- createDataPartition(emotions_train,
+                                        times = 1, p = 0.25, 
+                                        list = FALSE)
+
+
+orig_validation <- fer_train_processed[validation_index, ]
+orig_train <- fer_train_processed[-validation_index, ]
+
+orig_test <- readRDS(file = "~/Documents/FER/Datasets/RDS/fer_test_processed.rds")
+
+
+save(orig_train, file = "~/Documents/FER/Datasets/RDA/orig_train.rda")
+save(orig_validation, file = "~/Documents/FER/Datasets/RDA/orig_validation.rda")
+save(orig_test, file = "~/Documents/FER/Datasets/RDA/orig_test.rda")
+
+```
+
+## PCA original dataset
+```{r}
+library(caret)
+load("~/Documents/FER/Datasets/RDA/orig_train.rda")
+pca_train_original <- prcomp(orig_train)
+plot(pca_train_original$sdev)
+save(pca_train_original,file = "~/Documents/FER/Datasets/RDA/pca_train_original.rda")
+library(dplyr)
+summary(pca_train_original)$importance[,c(2,5,10,15,20,25,50)] %>% knitr::kable()
+
+K <- 25
+#PCA - Validation
+col_means <- colMeans(orig_validation)
+pca_validation <- sweep(orig_validation, 2, col_means) %*% pca_train_original$rotation
+pca_validation <- pca_validation[,1 :K]
+save(pca_validation, file = "~/Documents/FER/Datasets/RDA/pca_validation_original.rda")
+
+#PCA - test
+load("~/Documents/FER/Datasets/RDA/orig_test.rda")
+col_means <- colMeans(orig_test)
+pca_test <- sweep(orig_test, 2, col_means) %*% pca_train_original$rotation
+pca_test <- pca_test[,1 :K]
+save(pca_test, file = "~/Documents/FER/Datasets/RDA/pca_test_original.rda")
+```
+
+```{r}
+load(file = "~/Documents/FER/Datasets/RDA/pca_train_original.rda")
+library(dplyr)
+summary(pca_train_original)$importance[,c(2,5,10,15,20,25,50)] %>% knitr::kable()
+
+K <- 50
+#PCA - Validation
+load(file = "~/Documents/FER/Datasets/RDA/orig_validation.rda")
+
+col_means <- colMeans(orig_validation)
+pca_validation_50 <- sweep(orig_validation, 2, col_means) %*% pca_train_original$rotation
+pca_validation_50 <- pca_validation_50[,1 :K]
+save(pca_validation_50, file = "~/Documents/FER/Datasets/RDA/pca_validation_50_original.rda")
+
+#PCA - test
+load("~/Documents/FER/Datasets/RDA/orig_test.rda")
+col_means <- colMeans(orig_test)
+pca_test_50 <- sweep(orig_test, 2, col_means) %*% pca_train_original$rotation
+pca_test_50 <- pca_test_50[,1 :K]
+save(pca_test_50, file = "~/Documents/FER/Datasets/RDA/pca_test_50_original.rda")
+```
+
+##Balanced classes - train_orig
+```{r}
+## Original_dataset_ balanced_classes - SMOTE
+
+library(smotefamily)
+load(file = "~/Documents/FER/Datasets/RDA/pca_train_original.rda")
+load("~/Documents/FER/Datasets/RDA/orig_train.rda")
+dat <- data.frame(emotions = as.factor(orig_train[,1]),pca_train_original$x[,1:50])
+rm(orig_train)
+rm(pca_train_original)
+gc()
+
+options(error = recover)
+#smote minority - class 1
+orig_train_smote <- SMOTE(dat[,-1],  # feature values
+              (dat[,1]),  # class labels
+              K = 5,
+              dup_size = 9)  # function parameter
+orig_train_smote_data <- orig_train_smote$data
+rm(orig_train_smote)
+gc()
+table(dat$emotions)
+table(orig_train_smote_data$class)
+
+#random undersample majority - class 3
+library(dplyr)
+dat <- orig_train_smote_data
+class3_instances <- filter(dat, dat$class == 3) #list of indexes of all class 3 instances
+other_instances <- filter(dat, dat$class != 3) #generate random sample of size 3500
+ind <- sample(nrow(class3_instances), size = 3500, replace = FALSE) 
+new_data <- rbind(other_instances, class3_instances[ind,]) #rbind with other class instances
+
+rm(orig_train_smote_data)
+rm(dat)
+gc()
+
+table(new_data$class)
+
+
+saveRDS(new_data, file = "~/Documents/FER/Datasets/RDS/orig_train_balanced.Rds")
+
+```
+
